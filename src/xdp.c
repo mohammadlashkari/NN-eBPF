@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include "xdp.skel.h"
+#include <net/if.h>
 
 static volatile bool exiting = false;
 
