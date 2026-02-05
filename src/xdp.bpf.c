@@ -268,6 +268,9 @@ int xdp_preprocessing(struct xdp_md *ctx)
         bpf_printk("ERROR: NN parameters not found (idx=%d)", attr_ptr->nn_idx);
         return XDP_PASS;
     }
+
+    bpf_printk("NN params loaded - first weight: %d, mean[0]: %d", 
+           net->layer_0_weight[0], net->mean[0]);
     
     /*
      * Prepare input features (6 features total):
@@ -301,6 +304,24 @@ int xdp_preprocessing(struct xdp_md *ctx)
      * small values (like dst_port=80)
      */
     standard_scaler(x, attr_ptr->hidden2, net->mean, net->scale, 6);
+
+    // After standard_scaler() call, add:
+    bpf_printk("[DEBUG] Raw features BEFORE normalization:");
+    bpf_printk("  max_len=%lld, max_dur=%lld, min_len=%lld", 
+               x[0], x[1], x[2]);
+    bpf_printk("  dst_port=%lld, hdr_len=%lld, num_pkt=%lld",
+               x[3], x[4], x[5]);
+
+    bpf_printk("[DEBUG] Normalized features AFTER scaling:");
+    bpf_printk("  norm[0]=%d, norm[1]=%d, norm[2]=%d",
+               attr_ptr->hidden2[0], attr_ptr->hidden2[1], attr_ptr->hidden2[2]);
+    bpf_printk("  norm[3]=%d, norm[4]=%d, norm[5]=%d",
+               attr_ptr->hidden2[3], attr_ptr->hidden2[4], attr_ptr->hidden2[5]);
+
+    bpf_printk("[DEBUG] Normalization params:");
+    bpf_printk("  mean: %lld, %lld, %lld", net->mean[0], net->mean[1], net->mean[2]);
+    bpf_printk("  scale: %lld, %lld, %lld", net->scale[0], net->scale[1], net->scale[2]);
+
     
     bpf_printk("[PREPROCESSING] Normalization complete, chaining to input layer...");
     
@@ -580,11 +601,11 @@ int xdp_output_linear(struct xdp_md *ctx)
     bpf_printk("Packets in flow: %lld", attr_ptr->num_packet);
     bpf_printk("Score [BENIGN]: %d", attr_ptr->hidden1[0]);
     bpf_printk("Score [ATTACK]: %d", attr_ptr->hidden1[1]);
+    bpf_printk("Confidence margin: %d (threshold: %d)", attack_margin, confidence_threshold);
     bpf_printk("Classification: %s", label ? "*** ATTACK DETECTED ***" : "BENIGN (Normal Traffic)");
     bpf_printk("Avg feature extraction: %lld ns", avg_feature_time);
     bpf_printk("Total detection time: %lld ns", detection_time);
     bpf_printk("========================================");
-    
     /*
      * NOTE: This currently returns XDP_PASS (allows packet)
      * In production, you might want to:
