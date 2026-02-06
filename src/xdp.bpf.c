@@ -25,9 +25,41 @@ struct
 } progs SEC(".maps");
 
 /*
+ * is_private_ip: Check if an IP address is in private network ranges
+ * Returns: 1 if private, 0 if public
+ *
+ * Private IP ranges (RFC 1918):
+ * - 10.0.0.0/8        (10.0.0.0 - 10.255.255.255)
+ * - 172.16.0.0/12     (172.16.0.0 - 172.31.255.255)
+ * - 192.168.0.0/16    (192.168.0.0 - 192.168.255.255)
+ */
+static inline int is_private_ip(u32 ip)
+{
+    // Convert from network byte order to host byte order for easier comparison
+    u32 ip_host = bpf_ntohl(ip);
+
+    // Check 10.0.0.0/8 (0x0A000000 to 0x0AFFFFFF)
+    if ((ip_host & 0xFF000000) == 0x0A000000) {
+        return 1;
+    }
+
+    // Check 172.16.0.0/12 (0xAC100000 to 0xAC1FFFFF)
+    if ((ip_host & 0xFFF00000) == 0xAC100000) {
+        return 1;
+    }
+
+    // Check 192.168.0.0/16 (0xC0A80000 to 0xC0A8FFFF)
+    if ((ip_host & 0xFFFF0000) == 0xC0A80000) {
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
  * flow_tuple: Extract network flow information from packet
  * Returns: 0 on success, -1 if packet doesn't match criteria
- * 
+ *
  * This function:
  * 1. Validates packet boundaries (required by eBPF verifier)
  * 2. Checks if packet is IPv4
@@ -108,31 +140,75 @@ int xdp_prog(struct xdp_md *ctx)
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
     
-    /* 
-     * FILTER: Only process packets from specific source IP
-     * 33.33.33.73 (decimal) == 555819337 (integer representation)
-     * 
-     * WHY THIS FILTER EXISTS:
-     * - In testing/research environments, you control both client and server
-     * - The test scripts in dataset-instance/ are configured to use this IP
-     * - This prevents analyzing random internet traffic during testing
-     * 
-     * TO REMOVE FILTER: Change this line to: if (1) {
-     * This will analyze ALL TCP traffic
+    /*
+     * ═══════════════════════════════════════════════════════════════
+     *                       TRAFFIC FILTERING OPTIONS
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * OPTION 1: Local network only (CURRENT - ENABLED)
+     * - Only processes packets where BOTH source AND destination are private IPs
+     * - Perfect for testing with devices on your local network
+     * - Filters out external internet traffic
+     *
+     * OPTION 2: All TCP traffic (DISABLED - see below)
+     * - Processes ALL TCP packets regardless of IP address
+     * - Useful for analyzing all network traffic
+     *
+     * TO SWITCH MODES:
+     * 1. Comment out the active if statement below
+     * 2. Uncomment the alternative if statement
+     * 3. Rebuild: cd src && make
      */
-    
-    // Convert source IP to human-readable format for logging
-    u32 src_ip = bpf_ntohl(f.saddr);
-    
-    // OPTION 1: Filter by specific IP (current behavior)
-    if (1) // 33.33.33.73
+
+    // ────────────────────────────────────────────────────────────────
+    // OPTION 1: LOCAL NETWORK ONLY (CURRENTLY ACTIVE)
+    // ────────────────────────────────────────────────────────────────
+    // Check if both source and destination are in private IP ranges:
+    // - 10.0.0.0/8 (10.x.x.x)
+    // - 172.16.0.0/12 (172.16.x.x - 172.31.x.x)
+    // - 192.168.0.0/16 (192.168.x.x) - most common for home networks
+    if (is_private_ip(f.saddr) && is_private_ip(f.daddr))
+
+    // ────────────────────────────────────────────────────────────────
+    // OPTION 2: ALL TCP TRAFFIC (DISABLED)
+    // ────────────────────────────────────────────────────────────────
+    // To enable: Comment out OPTION 1 above and uncomment the line below
+    // if (1)
     {
-        bpf_printk("==> Packet from monitored IP: %d.%d.%d.%d:%d",
+        // Convert IPs to human-readable format for logging
+        u32 src_ip = bpf_ntohl(f.saddr);
+        u32 dst_ip = bpf_ntohl(f.daddr);
+
+        // ────────────────────────────────────────────────────────────────
+        // LOG MESSAGE - OPTION 1: Local network mode (CURRENTLY ACTIVE)
+        // ────────────────────────────────────────────────────────────────
+        bpf_printk("==> Local network packet: %d.%d.%d.%d:%d -> %d.%d.%d.%d:%d",
                    (src_ip >> 24) & 0xFF,
                    (src_ip >> 16) & 0xFF,
                    (src_ip >> 8) & 0xFF,
                    src_ip & 0xFF,
-                   bpf_ntohs(f.sport));
+                   bpf_ntohs(f.sport),
+                   (dst_ip >> 24) & 0xFF,
+                   (dst_ip >> 16) & 0xFF,
+                   (dst_ip >> 8) & 0xFF,
+                   dst_ip & 0xFF,
+                   bpf_ntohs(f.dport));
+
+        // ────────────────────────────────────────────────────────────────
+        // LOG MESSAGE - OPTION 2: All traffic mode (DISABLED)
+        // ────────────────────────────────────────────────────────────────
+        // To enable: Comment out the log above and uncomment the one below
+        // bpf_printk("==> Processing packet: %d.%d.%d.%d:%d -> %d.%d.%d.%d:%d",
+        //            (src_ip >> 24) & 0xFF,
+        //            (src_ip >> 16) & 0xFF,
+        //            (src_ip >> 8) & 0xFF,
+        //            src_ip & 0xFF,
+        //            bpf_ntohs(f.sport),
+        //            (dst_ip >> 24) & 0xFF,
+        //            (dst_ip >> 16) & 0xFF,
+        //            (dst_ip >> 8) & 0xFF,
+        //            dst_ip & 0xFF,
+        //            bpf_ntohs(f.dport));
         
         // Re-validate packet boundaries (required after any operations)
         struct iphdr *ip = data + sizeof(struct ethhdr);
@@ -198,20 +274,7 @@ int xdp_prog(struct xdp_md *ctx)
             }
         }
     }
-    // OPTION 2: To monitor ALL TCP traffic, uncomment these lines and comment the above if block:
-    /*
-    else
-    {
-        // Log every 100th packet to avoid spam
-        static u32 packet_count = 0;
-        packet_count++;
-        if (packet_count % 100 == 0)
-        {
-            bpf_printk("Processed %u packets (not from monitored IP)", packet_count);
-        }
-    }
-    */
-    
+
     return XDP_PASS; // Allow packet to continue to network stack
 }
 
