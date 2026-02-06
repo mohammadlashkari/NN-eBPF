@@ -19,8 +19,8 @@ $(OUTPUT):
 $(OUTPUT)/hot_updating: hot_updating.c mlp_params.bpf.h | $(OUTPUT)
 	$(CLANG) -g -Wall -lelf -lz $(INCLUDES) $< $(LIBBPF_OBJ) -o $@
 
-$(OUTPUT)/hot_threshold: hot_threshold.c | $(OUTPUT)
-	$(CLANG) -g -Wall -lelf -lz $(INCLUDES) $< $(LIBBPF_OBJ) -o $@
+$(OUTPUT)/hot_threshold: hot_threshold.c common.h | $(OUTPUT)
+	$(CLANG) -g -Wall -lelf -lz -lm $(INCLUDES) $< $(LIBBPF_OBJ) -o $@
 
 $(OUTPUT)/attack_monitor: attack_monitor.c common.h | $(OUTPUT)
 	$(CLANG) -g -Wall -lelf -lz $(INCLUDES) $< $(LIBBPF_OBJ) -o $@
