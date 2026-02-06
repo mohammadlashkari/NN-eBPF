@@ -8,7 +8,7 @@ LIBBPF_OBJ ?= $(abspath ../.output/libbpf/libbpf.a)
 BPFTOOL ?= $(abspath ../.output/bpftool/bpftool)
 
 INCLUDES = -I$(OUTPUT) -I$(LIBBPF_INCLUDE) -I$(LIBBPF_SRC) -I/usr/include/x86_64-linux-gnu/
-TARGET = $(OUTPUT)/xdp $(OUTPUT)/hot_updating
+TARGET = $(OUTPUT)/xdp $(OUTPUT)/hot_updating $(OUTPUT)/hot_threshold
 SRC = xdp.bpf.c $(OUTPUT)/vmlinux.h handler.bpf.h common.h mlp.bpf.h params.bpf.h
 
 all: $(TARGET)
@@ -17,6 +17,9 @@ $(OUTPUT):
 	mkdir -p "$(OUTPUT)"
 
 $(OUTPUT)/hot_updating: hot_updating.c mlp_params.bpf.h | $(OUTPUT)
+	$(CLANG) -g -Wall -lelf -lz $(INCLUDES) $< $(LIBBPF_OBJ) -o $@
+
+$(OUTPUT)/hot_threshold: hot_threshold.c | $(OUTPUT)
 	$(CLANG) -g -Wall -lelf -lz $(INCLUDES) $< $(LIBBPF_OBJ) -o $@
 
 $(OUTPUT)/test-mlp: test-mlp.c mlp.bpf.h params.bpf.h | $(OUTPUT)

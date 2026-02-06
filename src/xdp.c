@@ -111,6 +111,18 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	// Initialize confidence threshold map
+	// Default threshold: 150000 (Q16.16 fixed-point) ≈ 2.3 in float
+	// This provides medium sensitivity - tested to filter benign curl while catching attacks
+	int32_t threshold_key = 0;
+	int32_t threshold_value = 150000;
+	err = bpf_map__update_elem(skel->maps.threshold_map, &threshold_key, sizeof(int32_t), &threshold_value, sizeof(int32_t), BPF_ANY);
+	if (err) {
+		fprintf(stderr, "Error: initializing threshold map\n");
+		return 1;
+	}
+	printf("✓ Initialized detection threshold: %d (default)\n", threshold_value);
+
 	// FIXED: Use generic/SKB mode for WiFi compatibility
 	LIBBPF_OPTS(bpf_xdp_attach_opts, attach_opts);
 	attach_opts.old_prog_fd = -1;
@@ -156,6 +168,7 @@ cleanup:
 	// delete pinned map
 	remove("/sys/fs/bpf/nn_parameters");
 	remove("/sys/fs/bpf/nn_idx");
+	remove("/sys/fs/bpf/threshold_map");
 
 	xdp_bpf__destroy(skel);
 

@@ -642,9 +642,18 @@ int xdp_output_linear(struct xdp_md *ctx)
      *   - Retrain model with more diverse benign traffic
      */
 
-    // Base threshold (Q16.16 fixed-point format)
-    // 150,000 in fixed-point ≈ 2.3 in float units
-    int32_t confidence_threshold = 150000;
+    /*
+     * DYNAMIC THRESHOLD LOOKUP
+     *
+     * Read confidence threshold from threshold_map (allows runtime tuning).
+     * If lookup fails, fall back to safe default (150000).
+     */
+    int32_t threshold_key = 0;
+    int32_t *threshold_ptr = bpf_map_lookup_elem(&threshold_map, &threshold_key);
+    int32_t confidence_threshold = threshold_ptr ? *threshold_ptr : 150000;
+
+    // Log threshold value (useful for verifying hot updates)
+    bpf_printk("[THRESHOLD] Current detection threshold: %d", confidence_threshold);
 
     // Calculate margin: How much more the NN favors ATTACK over BENIGN
     // Positive margin → Leans toward attack
