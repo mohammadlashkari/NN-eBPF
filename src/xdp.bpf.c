@@ -731,21 +731,36 @@ int xdp_output_linear(struct xdp_md *ctx)
      * CONFIDENCE LEVEL CLASSIFICATION
      * ───────────────────────────────────────────────────────────────
      *
-     * Provide more granular information about confidence:
-     *   - VERY HIGH: Almost certainly attack (>500k margin)
-     *   - HIGH: Likely attack (200k-500k margin)
-     *   - MEDIUM: Possible attack (100k-200k margin) - UNCERTAIN!
-     *   - LOW: Likely benign (50k-100k margin)
-     *   - VERY LOW: Almost certainly benign (<50k margin)
+     * Provide more granular information about confidence.
+     * Thresholds are SCALED based on the detection threshold to maintain
+     * consistent confidence levels regardless of threshold tuning:
+     *
+     *   - VERY HIGH: margin > 3.33 × threshold (extremely confident attack)
+     *   - HIGH: margin > 1.33 × threshold (confident attack)
+     *   - MEDIUM: margin > 0.67 × threshold (possible attack - UNCERTAIN!)
+     *   - LOW: margin > 0.33 × threshold (likely benign)
+     *   - VERY LOW: margin ≤ 0.33 × threshold (very likely benign)
+     *
+     * Example with threshold=150000:
+     *   - VERY HIGH: >500k, HIGH: >200k, MEDIUM: >100k, LOW: >50k
+     *
+     * Example with threshold=100000 (high sensitivity):
+     *   - VERY HIGH: >333k, HIGH: >133k, MEDIUM: >67k, LOW: >33k
      */
     int confidence_level;
-    if (attack_margin > 500000) {
+    // Calculate scaled thresholds (multiply first to avoid integer division loss)
+    int32_t very_high_threshold = (confidence_threshold * 10) / 3;  // 3.33x
+    int32_t high_threshold = (confidence_threshold * 4) / 3;        // 1.33x
+    int32_t medium_threshold = (confidence_threshold * 2) / 3;      // 0.67x
+    int32_t low_threshold = confidence_threshold / 3;               // 0.33x
+
+    if (attack_margin > very_high_threshold) {
         confidence_level = 5;  // VERY HIGH
-    } else if (attack_margin > 200000) {
+    } else if (attack_margin > high_threshold) {
         confidence_level = 4;  // HIGH
-    } else if (attack_margin > 100000) {
+    } else if (attack_margin > medium_threshold) {
         confidence_level = 3;  // MEDIUM
-    } else if (attack_margin > 50000) {
+    } else if (attack_margin > low_threshold) {
         confidence_level = 2;  // LOW
     } else {
         confidence_level = 1;  // VERY LOW
@@ -758,25 +773,38 @@ int xdp_output_linear(struct xdp_md *ctx)
      *
      * eBPF doesn't have exp() function for proper softmax, so we use
      * a piecewise linear approximation to estimate attack probability.
+     * Thresholds are SCALED based on the detection threshold to maintain
+     * consistent probability mapping across different threshold settings.
      *
-     * This is NOT exact, but gives intuitive percentage values:
-     *   - margin > 1M → ~99% attack
-     *   - margin = 500k → ~95% attack
-     *   - margin = 200k → ~85% attack
-     *   - margin = 100k → ~70% attack (UNCERTAIN - borderline)
-     *   - margin = 0 → ~50% attack (completely uncertain)
-     *   - margin < 0 → <50% attack (leans benign)
+     * Scaling factors (relative to threshold):
+     *   - margin > 6.67 × threshold → ~99% attack (extremely certain)
+     *   - margin > 3.33 × threshold → ~95% attack (very certain)
+     *   - margin > 1.33 × threshold → ~85% attack (certain)
+     *   - margin > 0.67 × threshold → ~70% attack (UNCERTAIN - borderline)
+     *   - margin > 0.33 × threshold → ~60% attack (slightly uncertain)
+     *   - margin > 0               → ~55% attack (very uncertain)
+     *   - margin ≤ 0               → <50% attack (leans benign)
+     *
+     * Example with threshold=150000:
+     *   - 99%: >1M, 95%: >500k, 85%: >200k, 70%: >100k, 60%: >50k
      */
     int32_t prob_attack_percent;
-    if (attack_margin > 1000000) {
+    // Calculate scaled probability thresholds
+    int32_t prob_99_threshold = (confidence_threshold * 20) / 3;   // 6.67x
+    int32_t prob_95_threshold = (confidence_threshold * 10) / 3;   // 3.33x
+    int32_t prob_85_threshold = (confidence_threshold * 4) / 3;    // 1.33x
+    int32_t prob_70_threshold = (confidence_threshold * 2) / 3;    // 0.67x
+    int32_t prob_60_threshold = confidence_threshold / 3;          // 0.33x
+
+    if (attack_margin > prob_99_threshold) {
         prob_attack_percent = 99;
-    } else if (attack_margin > 500000) {
+    } else if (attack_margin > prob_95_threshold) {
         prob_attack_percent = 95;
-    } else if (attack_margin > 200000) {
+    } else if (attack_margin > prob_85_threshold) {
         prob_attack_percent = 85;
-    } else if (attack_margin > 100000) {
+    } else if (attack_margin > prob_70_threshold) {
         prob_attack_percent = 70;
-    } else if (attack_margin > 50000) {
+    } else if (attack_margin > prob_60_threshold) {
         prob_attack_percent = 60;
     } else if (attack_margin > 0) {
         prob_attack_percent = 55;
