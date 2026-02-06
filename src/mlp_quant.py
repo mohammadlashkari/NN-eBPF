@@ -11,7 +11,13 @@ def write_params_to_file(f, name, params):
             f.write(f', {params[idx]}')
     f.write(f'}};\n\n')
 
-saved_stats = torch.load(sys.argv[1])
+# NOTE:
+# PyTorch 2.6 changed torch.load() default behavior to `weights_only=True`.
+# Our checkpoint (`mlp.th`) is not "weights-only" because it also contains
+# pickled Python objects (ex: DataLoader, numpy arrays, etc.).
+#
+# So we must load with `weights_only=False` to allow full unpickling.
+saved_stats = torch.load(sys.argv[1], weights_only=False)
 state_dict = saved_stats['state_dict']
 mean = saved_stats['mean']
 scale = saved_stats['scale']

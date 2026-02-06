@@ -1,3 +1,5 @@
 .output
 *.o
 .README.md
+__pycache__/
+*.pyc
