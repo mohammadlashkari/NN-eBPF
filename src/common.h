@@ -1,6 +1,6 @@
 /*
  * common.h - Shared data structures for NN-eBPF intrusion detection
- * 
+ *
  * This file defines:
  * 1. flow_attribute: Statistics collected for each TCP connection
  * 2. flow: 5-tuple identifier for a network flow
@@ -9,6 +9,25 @@
 
 #ifndef COMMON_H
 #define COMMON_H
+
+/*
+ * Detect if we're compiling for eBPF kernel context or userspace
+ * - eBPF programs have __BPF__ or __KERNEL__ defined
+ * - Userspace programs don't have these macros
+ */
+#ifdef __BPF__
+    /* Kernel context - use eBPF types */
+    #define KERNEL_CONTEXT
+#else
+    /* Userspace context - define type aliases for kernel types */
+    #include <stdint.h>
+    #include <linux/types.h>
+
+    typedef int64_t s64;
+    typedef uint64_t u64;
+    typedef int32_t s32;
+    typedef uint32_t u32;
+#endif
 
 /*
  * flow_attribute: Per-flow statistics and neural network state
@@ -111,19 +130,19 @@ struct flow
 
 /*
  * flow_map: Hash table storing per-flow statistics
- * 
+ *
  * Type: BPF_MAP_TYPE_HASH
  * - Efficient lookup: O(1) average case
  * - Key: struct flow (5-tuple)
  * - Value: struct flow_attribute (statistics + NN state)
- * 
+ *
  * How it works:
  * 1. When packet arrives, extract flow tuple
  * 2. Look up flow in map: bpf_map_lookup_elem(&flow_map, &flow_key)
  * 3. If found: Update statistics (packet count, max length, etc.)
  * 4. If not found: Create new entry with initial values
  * 5. When FIN/RST: Use accumulated stats for NN classification
- * 
+ *
  * Why 8192 entries?
  * - Typical server handles 100-1000 concurrent connections
  * - 8192 allows headroom for burst traffic
@@ -132,6 +151,8 @@ struct flow
  */
 #define MAX_PACKET_REACORD 8192
 
+#ifdef KERNEL_CONTEXT
+/* BPF map definition - only needed in kernel/eBPF context */
 struct
 {
     __uint(type, BPF_MAP_TYPE_HASH);        // Hash table for O(1) lookup
@@ -142,10 +163,10 @@ struct
 
 /*
  * USAGE EXAMPLE:
- * 
+ *
  * // 1. Extract flow from packet
  * struct flow f = {.saddr = ip->saddr, .daddr = ip->daddr, ...};
- * 
+ *
  * // 2. Look up or create flow statistics
  * struct flow_attribute *attr = bpf_map_lookup_elem(&flow_map, &f);
  * if (!attr) {
@@ -154,16 +175,51 @@ struct
  *     bpf_map_update_elem(&flow_map, &f, &new_attr, BPF_ANY);
  *     attr = bpf_map_lookup_elem(&flow_map, &f);
  * }
- * 
+ *
  * // 3. Update statistics
  * attr->num_packet++;
  * attr->max_packet_length = max(attr->max_packet_length, packet_len);
- * 
+ *
  * // 4. When flow ends, use stats for classification
  * if (tcp->fin || tcp->rst) {
  *     // attr now contains complete flow statistics
  *     // Pass to neural network for classification
  * }
  */
+#endif /* KERNEL_CONTEXT */
+
+/*
+ * attack_event: Structure for logging detected attacks
+ *
+ * This is sent from eBPF to userspace via ring buffer when an attack
+ * is detected. Contains all relevant information for monitoring/logging.
+ */
+struct attack_event
+{
+    /* === FLOW IDENTIFICATION === */
+    __u32 src_ip;           // Source IP address (host byte order)
+    __u32 dst_ip;           // Destination IP address (host byte order)
+    __u16 src_port;         // Source port (host byte order)
+    __u16 dst_port;         // Destination port (host byte order)
+
+    /* === DETECTION METRICS === */
+    __u64 timestamp;        // When attack was detected (nanoseconds since boot)
+    __s32 attack_score;     // Neural network attack score (Q16.16 fixed-point)
+    __s32 benign_score;     // Neural network benign score (Q16.16 fixed-point)
+    __s32 margin;           // Confidence margin (attack_score - benign_score)
+    __s32 threshold;        // Detection threshold used
+    __u8  probability;      // Attack probability percentage (0-100)
+    __u8  confidence_level; // Confidence level (1=VERY_LOW to 5=VERY_HIGH)
+
+    /* === FLOW STATISTICS === */
+    __u64 num_packets;      // Total packets in flow
+    __u64 max_pkt_len;      // Largest packet size
+    __u64 min_pkt_len;      // Smallest packet size
+    __u64 max_duration;     // Max inter-packet delay (nanoseconds)
+    __u64 header_length;    // Total header bytes
+
+    /* === PERFORMANCE METRICS === */
+    __u64 detection_time;   // Time taken for detection (nanoseconds)
+};
 
 #endif // COMMON_H

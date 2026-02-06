@@ -3,10 +3,17 @@ Ggg# NN-eBPF Test Cases
 This document provides test cases for validating the intrusion detection system and threshold tuning.
 
 ## Prerequisites
+0. if want train the model again
+```sh
+   source .venv/bin/activate  # -> activate libarariesrun in root
+   python3 mlp_train.py       # -> train + normalize -> mlp.th output
+   python3 mlp_quant.py mlp.th 16
+```
 
 1. XDP program must be running:
    ```bash
    sudo ./src/.output/xdp wlan0
+   sudo ./src/.output/hot_updating # -> register initial weights
    ```
 
 2. Monitor detection logs in separate terminal:
@@ -209,7 +216,7 @@ sudo nmap -sN target-ip
 
 **Expected Result:**
 - Classification: ATTACK DETECTED
-- May have lower margin than aggressive scans
+- May have lower margin than aggressive s/cans
 - Multiple incomplete connections
 
 ---

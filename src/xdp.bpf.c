@@ -11,7 +11,7 @@
 
 #define ETH_P_IP 0x0800 /* Internet Protocol packet */
 
-/* 
+/*
  * BPF_MAP_TYPE_PROG_ARRAY: Tail call map for chaining eBPF programs
  * This allows breaking the neural network inference into smaller programs
  * to avoid eBPF's instruction limit (max ~1 million instructions per program)
@@ -23,6 +23,24 @@ struct
     __type(key, u32);
     __type(value, u32);
 } progs SEC(".maps");
+
+/*
+ * attack_events: Ring buffer for sending detected attacks to userspace
+ *
+ * Ring buffers are the modern way to send events from eBPF to userspace:
+ * - Efficient: Lock-free, zero-copy event delivery
+ * - Ordered: Events arrive in the order they were submitted
+ * - Reliable: Handles bursts better than perf buffers
+ *
+ * Used to send attack_event structures to the monitoring program
+ * Pinned to /sys/fs/bpf/attack_events for access by attack_monitor
+ */
+struct
+{
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 256 * 1024); // 256 KB buffer (stores ~1000 events)
+    __uint(pinning, LIBBPF_PIN_BY_NAME); // Pin so monitor can access it
+} attack_events SEC(".maps");
 
 /*
  * is_private_ip: Check if an IP address is in private network ranges
@@ -864,6 +882,53 @@ int xdp_output_linear(struct xdp_md *ctx)
     bpf_printk("Avg feature extraction: %lld ns", avg_feature_time);
     bpf_printk("Total detection time: %lld ns", detection_time);
     bpf_printk("========================================");
+
+    /*
+     * ═══════════════════════════════════════════════════════════════
+     *                    ATTACK EVENT LOGGING
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * If an attack is detected, send event to userspace monitoring program
+     * via ring buffer for logging and analysis.
+     */
+    if (label == 1) {
+        // Reserve space in ring buffer for attack event
+        struct attack_event *event = bpf_ringbuf_reserve(&attack_events,
+                                                         sizeof(struct attack_event), 0);
+        if (event) {
+            // Populate event with flow information (convert to host byte order)
+            event->src_ip = bpf_ntohl(f.saddr);
+            event->dst_ip = bpf_ntohl(f.daddr);
+            event->src_port = bpf_ntohs(f.sport);
+            event->dst_port = bpf_ntohs(f.dport);
+
+            // Detection metrics
+            event->timestamp = bpf_ktime_get_ns();
+            event->attack_score = attr_ptr->hidden1[1];
+            event->benign_score = attr_ptr->hidden1[0];
+            event->margin = attack_margin;
+            event->threshold = confidence_threshold;
+            event->probability = (__u8)prob_attack_percent;
+            event->confidence_level = (__u8)confidence_level;
+
+            // Flow statistics
+            event->num_packets = attr_ptr->num_packet;
+            event->max_pkt_len = attr_ptr->max_packet_length;
+            event->min_pkt_len = attr_ptr->min_packet_length;
+            event->max_duration = attr_ptr->max_duration;
+            event->header_length = attr_ptr->header_length;
+
+            // Performance metrics
+            event->detection_time = detection_time;
+
+            // Submit event to userspace (makes it visible to monitoring program)
+            bpf_ringbuf_submit(event, 0);
+
+            bpf_printk("[MONITOR] Attack event submitted to userspace for logging");
+        } else {
+            bpf_printk("[MONITOR] WARNING: Ring buffer full, attack event dropped!");
+        }
+    }
     /*
      * NOTE: This currently returns XDP_PASS (allows packet)
      * In production, you might want to:
