@@ -107,3 +107,111 @@ create a improved_version.md file and list all ml improvement i can do to the pr
 then i check the list and pick some of then to you implement
 
 
+
+based on the improved_version.md file you provide i picked
+1. Use a better and more efficient activation function
+2. Use a better and more efficient loss function
+3. Early Stopping and Model Checkpointing
+4. Try AdamW with weight decay
+
+
+
+i want complete explanation for the imperovment inside a file <name_of_improvment>.md
+explain the achievement and improvement
+i want a before and after comparison 
+i want graph and charts and tables and visualization
+i want metric improvements on different attacks and overall system
+i want realistic numbers and comparison with paper.md
+
+
+Batch Normalization
+
+
+
+---
+
+
+
+
+
+I am improving this ml paper and this source code
+- paper.md (original baseline paper)
+- improved_version.md (my current improved draft)
+- source code inside src/
+
+From improved_version.md, I selected these improvements:
+1) Use a better and more efficient activation function
+2) Use a better and more efficient loss function
+3) Add Early Stopping + Model Checkpointing
+4) Use AdamW with weight decay
+
+Your task:
+
+Update Code:
+- Update the src code 
+- Add comments and explain
+- Ensure the updated code runs end-to-end.
+- Add useful logs if needed
+
+Documentation:
+
+For EACH improvement, create a separate markdown file named exactly:
+- activation_function.md
+- loss_function.md
+- early_stopping_checkpointing.md
+- adamw_weight_decay.md
+
+Each file must include:
+
+1) What the baseline did (from paper.md)
+- Quote the relevant part.
+- Explain what it means in simple technical terms.
+
+2) What I changed (from improved_version.md)
+- Quote the relevant part.
+- Explain what changed and why.
+
+3) Why this improvement matters
+- Include ML theory + intuition.
+- Mention tradeoffs and risks.
+
+4) Before vs After comparison
+- Provide a structured comparison table.
+- Include expected effects on:
+  - convergence speed
+  - stability
+  - generalization
+  - robustness to attacks
+  - effect on different kind of attacks
+  - compute cost
+
+5) Metrics section (NO FABRICATION)
+- User realistic numbers
+- Include per-attack metrics and overall system metrics.
+
+6) Visualizations (generate code, not fake plots)
+- Provide Python matplotlib code that will generate:
+  - bar charts (before vs after per attack)
+  - line chart (training loss curves)
+  - table summary
+- The code must read metrics from a CSV file called results.csv.
+
+7) Achievement summary
+- Give a short bullet list of what this improvement accomplishes.
+- Provide 1–2 sentences I can directly paste into the paper.
+
+Formatting requirements:
+- Output must be valid Markdown.
+- Use clean headings and consistent structure across all 4 files.
+- Do NOT invent numbers.
+- Be precise and paper-ready.
+- Do not write too much i want it be at most 4 pages
+
+
+
+
+
+Inside each improvement document there is a visualization code which read a result.csv
+Please create a good and realistic and accurate result.csv so i can run the visualizations codes
+
+

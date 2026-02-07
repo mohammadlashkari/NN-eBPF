@@ -186,6 +186,115 @@ static inline void relu(int32_t *tensor, const int32_t size)
 
 /*
  * ═══════════════════════════════════════════════════════════════════
+ *                   LEAKY ReLU ACTIVATION FUNCTION (IMPROVED)
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ * LeakyReLU = Leaky Rectified Linear Unit
+ * Formula: f(x) = max(alpha * x, x) where alpha = 0.01
+ *
+ * Graph:
+ *      │
+ *    5 │         ╱
+ *    4 │        ╱
+ *    3 │       ╱
+ *    2 │      ╱
+ *    1 │     ╱
+ *    0 │    ╱
+ *      │   ╱────────
+ *      │-5 -3 -1 1 3 5
+ *        ╱  (small slope for negative values)
+ *
+ * ───────────────────────────────────────────────────────────────────
+ * IMPROVEMENT OVER ReLU
+ * ───────────────────────────────────────────────────────────────────
+ *
+ * ReLU Problem: "Dying ReLU"
+ *   - If a neuron's output becomes negative during training
+ *   - ReLU makes it exactly 0
+ *   - Gradient becomes 0
+ *   - Neuron NEVER recovers (permanently "dead")
+ *
+ * LeakyReLU Solution:
+ *   - For negative values: f(x) = 0.01 * x (small slope)
+ *   - Gradient is 0.01 instead of 0
+ *   - Neuron can still learn and recover
+ *
+ * Example:
+ *   Input:  [-100, -50, 0, 50, 100]
+ *   ReLU:   [   0,   0, 0, 50, 100]  ← Negative info lost!
+ *   LeakyReLU: [-1, -0.5, 0, 50, 100]  ← Negative info preserved!
+ *
+ * ───────────────────────────────────────────────────────────────────
+ * FIXED-POINT IMPLEMENTATION
+ * ───────────────────────────────────────────────────────────────────
+ *
+ * alpha = 0.01 in Q16.16 fixed-point:
+ *   0.01 * 65536 = 655.36 ≈ 655
+ *
+ * For negative x:
+ *   result = (x * 655) >> 16
+ *
+ * Example: x = -65536 (which is -1.0 in Q16.16)
+ *   ((-65536) * 655) >> 16
+ *   = -42926080 >> 16
+ *   = -655 (which is -0.01 in Q16.16)
+ *
+ * ───────────────────────────────────────────────────────────────────
+ * WHY LeakyReLU IS BETTER FOR INTRUSION DETECTION
+ * ───────────────────────────────────────────────────────────────────
+ *
+ * 1. Robustness to unusual attacks:
+ *    - Novel attacks might trigger negative activations
+ *    - LeakyReLU preserves this information
+ *    - ReLU would zero it out, losing detection signal
+ *
+ * 2. Better gradient flow:
+ *    - All neurons remain trainable
+ *    - Improves convergence speed
+ *    - Better final accuracy
+ *
+ * 3. Minimal overhead:
+ *    - Only slightly more expensive than ReLU
+ *    - One multiplication + one shift per negative value
+ *    - Still eBPF-compatible (no division/exp needed)
+ *
+ * ───────────────────────────────────────────────────────────────────
+ * COMPATIBILITY NOTE
+ * ───────────────────────────────────────────────────────────────────
+ *
+ * This function is fully compatible with eBPF because:
+ *   - Uses only integer arithmetic
+ *   - No floating point operations
+ *   - No division (uses right-shift instead)
+ *   - Loop can be fully unrolled (size is compile-time constant)
+ *
+ * To use LeakyReLU instead of ReLU, replace calls to relu() with
+ * leaky_relu() in the XDP tail call programs.
+ */
+static inline void leaky_relu(int32_t *tensor, const int32_t size)
+{
+    // Alpha = 0.01 in Q16.16 fixed-point format
+    // 0.01 * 65536 = 655.36 ≈ 655
+    const int32_t alpha_fixed = 655;
+
+    // Unroll loop for performance (eBPF requirement)
+    #pragma clang loop unroll(full)
+    for (int32_t i = 0; i < size; i++)
+    {
+        if (tensor[i] < 0)
+        {
+            // For negative values: f(x) = alpha * x
+            // Multiply by alpha (Q16.16), then shift right by 16
+            // Cast to int64_t to prevent overflow
+            int64_t result = ((int64_t)tensor[i] * (int64_t)alpha_fixed) >> 16;
+            tensor[i] = (int32_t)result;
+        }
+        // For positive values: keep unchanged (tensor[i] >= 0)
+    }
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════════════
  *                   STANDARD SCALER (Normalization)
  * ═══════════════════════════════════════════════════════════════════
  *

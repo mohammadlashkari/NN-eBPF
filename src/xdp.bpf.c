@@ -497,14 +497,16 @@ int xdp_input_relu(struct xdp_md *ctx)
         return XDP_PASS;
     }
     
-    bpf_printk("[INPUT RELU] Applying activation function (ReLU)...");
-    
+    bpf_printk("[INPUT LEAKY_RELU] Applying activation function (LeakyReLU)...");
+
     /*
-     * Apply ReLU: Replace all negative values with 0
-     * Positive values stay the same
-     * This helps NN focus on relevant features and ignore noise
+     * IMPROVEMENT 1: Apply LeakyReLU instead of ReLU
+     * - For negative values: multiply by 0.01 (instead of zeroing)
+     * - For positive values: keep unchanged
+     * - Prevents "dying neurons" problem
+     * - Better gradient flow and convergence
      */
-    relu(attr_ptr->hidden1, 32);
+    leaky_relu(attr_ptr->hidden1, 32);
     
     /* COMMENTED PRINT shows values after ReLU
      * All values should be >= 0 after this
@@ -591,9 +593,12 @@ int xdp_hidden_relu(struct xdp_md *ctx)
         return XDP_PASS;
     }
     
-    bpf_printk("[HIDDEN RELU] Applying activation function (ReLU)...");
-    
-    relu(attr_ptr->hidden2, 32);
+    bpf_printk("[HIDDEN LEAKY_RELU] Applying activation function (LeakyReLU)...");
+
+    /*
+     * IMPROVEMENT 1: Apply LeakyReLU instead of ReLU
+     */
+    leaky_relu(attr_ptr->hidden2, 32);
     
     /* COMMENTED PRINT shows values after second ReLU */
     // bpf_printk("After ReLU: %d %d %d %d %d %d",
