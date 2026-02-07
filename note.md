@@ -215,3 +215,18 @@ Inside each improvement document there is a visualization code which read a resu
 Please create a good and realistic and accurate result.csv so i can run the visualizations codes
 
 
+
+
+
+---
+
+i want a comprehensive before vs after table for each improvement on different metrics on different kind of attacks with real numbers
+make it inside before_vs_after.md file plus a short and concise summary on each improvement
+i want a comprehensive before vs after graph
+
+
+
+
+
+
+
