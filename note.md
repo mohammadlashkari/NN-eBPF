@@ -96,10 +96,14 @@
 
 
 
-i want the hot threshold be smarter 
-i want the hot_threshol be like this 
-default be the same like now (150000)
-sudo ./.output/hot_threshold 100 (if i passed a fixed number set that number like now)
-but if i pass some flag or some args like smart sudo ./.output/hot_threshold --smart or smart Arg (pick better name instead of smart)
-it use some mean or std deviation or some smart algorithm to pick a new and better threshold value 
+
+ok this is a university project based on paper.md paper
+i need to improve the ml part
+need to change something so the result be more accurate and better
+and then compare old version with my improved version and explain my achievements and work
+also compare the result with some graphs and tables and charts
+i dont want add attributes to the flow because i think this cause finding a new dataset am i right?
+create a improved_version.md file and list all ml improvement i can do to the project
+then i check the list and pick some of then to you implement
+
 
